@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import Tree from 'rc-tree';
 import 'rc-tree/assets/index.css';
 
-const accessToken = 'dummy';
+const accessToken = process.env.REACT_APP_BOX_ACCESS_TOKEN;
 const folderId = '276262437393';
 const templateKey = 'template9';
 
