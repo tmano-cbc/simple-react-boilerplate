@@ -1,54 +1,81 @@
 import React, { useEffect, useState } from 'react';
+import Tree from 'rc-tree';
+import 'rc-tree/assets/index.css';
 
-const accessToken = 'YOUR_ACCESS_TOKEN'; // 一時的にハードコード（本番ではLambdaなどで安全に管理）
-const fileId = 'YOUR_FILE_ID';
-const templateKey = 'YOUR_TEMPLATE_KEY';
+const accessToken = 'l4YhcgdsvLmDerRg8xgEMPJ5nIUkBCbs';
+const folderId = '276262437393';
+const templateKey = 'template9';
 
 function App() {
-  const [metadata, setMetadata] = useState(null);
-  const [error, setError] = useState(null);
+  const [treeData, setTreeData] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
-    const fetchMetadata = async () => {
-      try {
-        const response = await fetch(
-          `https://api.box.com/2.0/files/${fileId}/metadata/enterprise/${templateKey}`,
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
-            },
+    const fetchFolderItems = async (id) => {
+      const res = await fetch(`https://api.box.com/2.0/folders/${id}/items`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const data = await res.json();
+
+      const children = await Promise.all(
+        data.entries.map(async (item) => {
+          if (item.type === 'folder') {
+            return {
+              key: item.id,
+              title: item.name,
+              children: await fetchFolderItems(item.id),
+            };
+          } else {
+            const metadataRes = await fetch(
+              `https://api.box.com/2.0/files/${item.id}/metadata/enterprise/${templateKey}`,
+              {
+                headers: { Authorization: `Bearer ${accessToken}` },
+              }
+            );
+            const metadata = await metadataRes.json();
+            return {
+              key: item.id,
+              title: `${item.name} (${metadata.status || 'ステータス不明'})`,
+              isLeaf: true,
+            };
           }
-        );
+        })
+      );
 
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        setMetadata(data);
-      } catch (err) {
-        console.error('Error fetching metadata:', err);
-        setError(err.message);
-      }
+      return children;
     };
 
-    fetchMetadata();
+    fetchFolderItems(folderId).then(setTreeData);
   }, []);
 
+  const filterTree = (nodes) =>
+    nodes
+      .map((node) => {
+        const match =
+          node.title.toLowerCase().includes(searchTerm.toLowerCase());
+        if (node.children) {
+          const filteredChildren = filterTree(node.children);
+          if (filteredChildren.length || match) {
+            return { ...node, children: filteredChildren };
+          }
+        } else if (match) {
+          return node;
+        }
+        return null;
+      })
+      .filter(Boolean);
+
   return (
-    <div style={{ padding: '2rem', fontFamily: 'Arial' }}>
-      <h1>Box Metadata Viewer</h1>
-      {error && <p style={{ color: 'red' }}>エラー: {error}</p>}
-      {metadata ? (
-        <div>
-          <p><strong>契約日:</strong> {metadata.contractDate}</p>
-          <p><strong>担当者:</strong> {metadata.owner}</p>
-          <p><strong>ステータス:</strong> {metadata.status}</p>
-        </div>
-      ) : (
-        <p>読み込み中...</p>
-      )}
+    <div style={{ padding: '2rem' }}>
+      <h2>Box メタデータツリー</h2>
+      <input
+        type="text"
+        placeholder="検索（ファイル名・フォルダ名・ステータス）"
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        style={{ marginBottom: '1rem', padding: '0.5rem', width: '100%' }}
+      />
+      <Tree treeData={filterTree(treeData)} defaultExpandAll />
     </div>
   );
 }
