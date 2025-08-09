@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import Tree from 'rc-tree';
 import 'rc-tree/assets/index.css';
 
@@ -9,7 +9,23 @@ const templateKey = 'template9';
 function App() {
   const [treeData, setTreeData] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const explorerRef = useRef(null);
 
+  // Content Explorer の表示
+  useEffect(() => {
+    if (window.Box && accessToken && explorerRef.current) {
+      const explorer = new window.Box.ContentExplorer();
+      explorer.show(folderId, accessToken, {
+        container: explorerRef.current,
+        canDownload: false,
+        canDelete: false,
+        canUpload: false,
+        defaultView: 'files',
+      });
+    }
+  }, [accessToken]);
+
+  // メタデータ付きツリーの取得
   useEffect(() => {
     const fetchFolderItems = async (id) => {
       const res = await fetch(`https://api.box.com/2.0/folders/${id}/items`, {
@@ -26,18 +42,26 @@ function App() {
               children: await fetchFolderItems(item.id),
             };
           } else {
-            const metadataRes = await fetch(
-              `https://api.box.com/2.0/files/${item.id}/metadata/enterprise/${templateKey}`,
-              {
-                headers: { Authorization: `Bearer ${accessToken}` },
-              }
-            );
-            const metadata = await metadataRes.json();
-            return {
-              key: item.id,
-              title: `${item.name} (${metadata.status || 'ステータス不明'})`,
-              isLeaf: true,
-            };
+            try {
+              const metadataRes = await fetch(
+                `https://api.box.com/2.0/files/${item.id}/metadata/enterprise/${templateKey}`,
+                {
+                  headers: { Authorization: `Bearer ${accessToken}` },
+                }
+              );
+              const metadata = await metadataRes.json();
+              return {
+                key: item.id,
+                title: `${item.name} (${metadata.status || 'ステータス不明'})`,
+                isLeaf: true,
+              };
+            } catch (err) {
+              return {
+                key: item.id,
+                title: `${item.name} (メタデータ取得失敗)`,
+                isLeaf: true,
+              };
+            }
           }
         })
       );
@@ -51,8 +75,7 @@ function App() {
   const filterTree = (nodes) =>
     nodes
       .map((node) => {
-        const match =
-          node.title.toLowerCase().includes(searchTerm.toLowerCase());
+        const match = node.title.toLowerCase().includes(searchTerm.toLowerCase());
         if (node.children) {
           const filteredChildren = filterTree(node.children);
           if (filteredChildren.length || match) {
@@ -76,6 +99,12 @@ function App() {
         style={{ marginBottom: '1rem', padding: '0.5rem', width: '100%' }}
       />
       <Tree treeData={filterTree(treeData)} defaultExpandAll />
+
+      <h2 style={{ marginTop: '2rem' }}>Box Content Explorer</h2>
+      <div
+        ref={explorerRef}
+        style={{ height: '600px', border: '1px solid #ccc', marginTop: '1rem' }}
+      />
     </div>
   );
 }
